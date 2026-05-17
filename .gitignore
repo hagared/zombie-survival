@@ -1,0 +1,7 @@
+*.rbxl
+*.rbxlx
+*.rbxl.lock
+*.rbxlx.lock
+sourcemap.json
+.DS_Store
+chat.zip
