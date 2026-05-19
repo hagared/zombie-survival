@@ -242,6 +242,8 @@ function ZombieAI.Start()
 						data.Waypoints = nil
 						if now - data.LastAttack > model:GetAttribute("AttackCooldown") then
 							data.LastAttack = now
+							-- Tell the procedural animator to play a spit-attack pose for ~0.4s.
+							model:SetAttribute("AttackingUntil", now + 0.4)
 							spawnSpit(data.RootPart, data.Target, model:GetAttribute("Damage"))
 						end
 					else
@@ -299,6 +301,11 @@ function ZombieAI.Start()
 						-- Melee attack on contact.
 						if dist < 4.5 and now - data.LastAttack > model:GetAttribute("AttackCooldown") then
 							data.LastAttack = now
+							-- Tell the procedural animator to play a melee
+							-- swing pose for ~0.35s. The Animate Heartbeat
+							-- in ZombieFactory reads this attribute to bend
+							-- the zombie forward and slam its arms down.
+							model:SetAttribute("AttackingUntil", now + 0.35)
 							local targetHum = data.Target:FindFirstChildOfClass("Humanoid")
 							if targetHum and targetHum.Health > 0 then
 								targetHum:TakeDamage(model:GetAttribute("Damage"))

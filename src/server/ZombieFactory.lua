@@ -162,36 +162,125 @@ end
 
 -- Drive a procedural shambling-zombie animation on the R6 motors. Runs on
 -- Heartbeat and cleans itself up when the humanoid dies / model is gone.
+--
+-- Layers:
+--   * IDLE    -- subtle breathing sway, head loll
+--   * WALK    -- legs swing, torso tilts side to side, arms reach forward
+--             with a counter-sway, and the body bobs vertically a touch
+--   * ATTACK  -- short pose triggered by ZombieAI when the zombie strikes:
+--             whole upper body lurches forward and arms slam down (melee)
+--             or both arms thrust toward the target (spit). Driven by the
+--             "AttackingUntil" attribute on the model: ZombieAI sets it to
+--             os.clock() + duration, the animator interpolates a punch /
+--             thrust until that time.
+--   * DEATH   -- snapping joints + impulse on the Torso so corpses tip
+--             over in a believable direction instead of standing rigid.
 function ZombieFactory.Animate(model, motors)
 	local phase = math.random() * math.pi * 2
+	local bob = math.random() * math.pi * 2
 	local conn
+	local diedHandled = false
+	local humanoid = model:FindFirstChildOfClass("Humanoid")
+
+	-- Ragdoll on death: break joints + give the torso a small backward
+	-- shove so the corpse falls in a direction matching the kill, and
+	-- recolor the body slightly grey for that "spent" look. We also turn
+	-- HumanoidRootPart non-massless temporarily so the parts settle on
+	-- the ground instead of floating.
+	local function ragdoll()
+		if diedHandled then return end
+		diedHandled = true
+		local torso = model:FindFirstChild("Torso")
+		local hrp = model:FindFirstChild("HumanoidRootPart")
+		-- Break every Motor6D so each limb becomes its own free part. The
+		-- Humanoid dies regardless; we just want a tumbling corpse.
+		for _, d in ipairs(model:GetDescendants()) do
+			if d:IsA("Motor6D") then
+				d:Destroy()
+			end
+		end
+		if torso then
+			torso.Color = torso.Color:Lerp(Color3.fromRGB(60, 60, 65), 0.4)
+			-- Toss the torso a bit in the look direction so it falls forward.
+			local dir = torso.CFrame.LookVector
+			torso.AssemblyLinearVelocity = Vector3.new(dir.X, 0.5, dir.Z) * 14
+				+ Vector3.new(math.random() - 0.5, 0, math.random() - 0.5) * 6
+			torso.AssemblyAngularVelocity = Vector3.new(
+				(math.random() - 0.5) * 8,
+				(math.random() - 0.5) * 8,
+				(math.random() - 0.5) * 8
+			)
+		end
+		if hrp then hrp.Massless = false end
+	end
+
+	if humanoid then
+		humanoid.Died:Connect(ragdoll)
+	end
+
 	conn = RunService.Heartbeat:Connect(function(dt)
 		if not model.Parent then
 			conn:Disconnect()
 			return
 		end
-		local humanoid = model:FindFirstChildOfClass("Humanoid")
 		if not humanoid or humanoid.Health <= 0 then
+			ragdoll()
 			conn:Disconnect()
 			return
 		end
 
 		phase += dt * 6
+		bob += dt * 12
 		local moving = humanoid.MoveDirection.Magnitude > 0.1
-		local amp = moving and 1 or 0.15
+		local amp = moving and 1 or 0.18
 		local s = math.sin(phase) * amp
 		local c = math.cos(phase) * amp
 
-		-- Legs swing forward/back around the hip (X axis in local space).
-		motors.LeftHip.motor.C0 = motors.LeftHip.c0 * CFrame.Angles(s * 0.7, 0, 0)
-		motors.RightHip.motor.C0 = motors.RightHip.c0 * CFrame.Angles(-s * 0.7, 0, 0)
-		-- Classic zombie arms-outstretched-forward pose with a subtle sway.
-		-- Positive X rotation = arms reach forward (the shoulder's local frame
-		-- is flipped via the RootJoint 180° Y rotation, so "+X" forward here).
-		motors.LeftShoulder.motor.C0 = motors.LeftShoulder.c0 * CFrame.Angles(1.3 + c * 0.15, 0, 0)
-		motors.RightShoulder.motor.C0 = motors.RightShoulder.c0 * CFrame.Angles(1.3 - c * 0.15, 0, 0)
-		-- Head lolls slowly.
-		motors.Neck.motor.C0 = motors.Neck.c0 * CFrame.Angles(math.sin(phase * 0.5) * 0.2, 0, math.sin(phase * 0.3) * 0.15)
+		-- Active attack window? Mix in a punch / thrust pose. Strength
+		-- ramps in over the first ~half then ramps out, so it reads as
+		-- a single deliberate swing rather than a sudden snap.
+		local attackingUntil = model:GetAttribute("AttackingUntil") or 0
+		local now = os.clock()
+		local atk = 0
+		if attackingUntil > now then
+			local windowSize = 0.4
+			local timeLeft = attackingUntil - now
+			-- Bell-curve: 0 at edges, 1 in the middle of the window.
+			atk = math.clamp(1 - math.abs((windowSize - timeLeft) / (windowSize * 0.5) - 1), 0, 1)
+		end
+
+		-- LEGS: slow shamble swing forward/back. Almost no swing while
+		-- standing still (just a tiny breathing wobble).
+		motors.LeftHip.motor.C0 = motors.LeftHip.c0 * CFrame.Angles(s * 0.8, 0, 0)
+		motors.RightHip.motor.C0 = motors.RightHip.c0 * CFrame.Angles(-s * 0.8, 0, 0)
+
+		-- TORSO: side-to-side stagger plus a vertical bob while walking.
+		-- The bob is achieved by tweaking the Root joint Y offset --
+		-- visually it looks like the zombie is dragging itself forward.
+		local torsoTilt = moving and (math.sin(phase) * 0.12) or 0
+		local torsoBob = moving and (math.sin(bob) * 0.08) or 0
+		motors.Root.motor.C0 = motors.Root.c0
+			* CFrame.new(0, torsoBob, 0)
+			* CFrame.Angles(atk * 0.6, 0, torsoTilt)
+
+		-- ARMS: classic outstretched-forward zombie pose with a lazy
+		-- counter-sway from the legs. During an attack swing both arms
+		-- snap upward (+atk * 0.9 makes the rotation more aggressive)
+		-- to read as a slam / lunge.
+		local armForward = 1.3
+		local armSwing = 0.18
+		motors.LeftShoulder.motor.C0 = motors.LeftShoulder.c0
+			* CFrame.Angles(armForward + c * armSwing - atk * 0.9, 0, 0)
+		motors.RightShoulder.motor.C0 = motors.RightShoulder.c0
+			* CFrame.Angles(armForward - c * armSwing - atk * 0.9, 0, 0)
+
+		-- HEAD: slow loll left/right, tilt down during attack.
+		motors.Neck.motor.C0 = motors.Neck.c0
+			* CFrame.Angles(
+				math.sin(phase * 0.5) * 0.2 + atk * 0.3,
+				0,
+				math.sin(phase * 0.3) * 0.18
+			)
 	end)
 end
 

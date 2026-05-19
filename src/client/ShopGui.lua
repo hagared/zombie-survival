@@ -218,13 +218,28 @@ local function rebuild()
 	if activeTab == "Weapons" then
 		for id, cfg in pairs(Config.Weapons) do
 			local owned = currentState.Weapons[id]
+			local locked = (currentState.LockedWeapons or {})[id]
 			local affordable = currentState.Money >= cfg.Price
 			local rays = cfg.Rays > 1 and (cfg.Rays .. " barrels") or "1 barrel"
 			local body = string.format("Damage %d • %.2fs/shot\n%s • Range %d", cfg.Damage, cfg.FireRate, rays, cfg.Range)
-			local priceText = owned and "OWNED" or ("$" .. cfg.Price)
-			makeCard(cfg.Order, cfg.Name, body, priceText, (not owned) and affordable, function()
+			local priceText
+			local badge
+			local canBuy
+			if owned then
+				priceText = "OWNED"
+				badge = "OWNED"
+				canBuy = false
+			elseif locked then
+				priceText = "LOCKED"
+				badge = "LOCKED"
+				canBuy = false
+			else
+				priceText = "$" .. cfg.Price
+				canBuy = affordable
+			end
+			makeCard(cfg.Order, cfg.Name, body, priceText, canBuy, function()
 				Remotes.PurchaseItem():FireServer("Weapon", id)
-			end, owned and "OWNED" or nil)
+			end, badge)
 		end
 	else
 		for id, cfg in pairs(Config.Defenses) do

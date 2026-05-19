@@ -30,13 +30,15 @@ local isFiring = false
 local clusterSpin = 0
 local recoilOffset = 0 -- decays each frame
 
--- Arm-raise tracking. While a weapon is equipped we override ONLY
--- the right shoulder Motor6D every frame so the gun-hand arm points
--- straight forward (zombie pose), and we zero out its `Transform` so
--- the default Roblox Animate script's walk/idle cycle can't swing it.
--- The LEFT arm is left completely alone -- it keeps its normal idle
--- and walk animation. Original C0 is cached so we can restore the
--- natural rest pose when the weapon is put away.
+-- Arm-raise tracking. While a weapon is equipped we override the right
+-- shoulder Motor6D to point the arm forward AND we DISABLE the motor so
+-- Roblox's stock R6 `Animate` LocalScript -- which keyframes walk / run /
+-- jump / idle animations into every shoulder Transform via the Animator --
+-- physically cannot drive this joint. A disabled Motor6D still rigidly
+-- welds Part0 to Part1 using its C0/C1, but the Animator skips it.
+-- The LEFT arm is left completely alone -- it keeps its normal idle and
+-- walk animation. Original C0 + Enabled state are cached so we can fully
+-- restore the natural rest pose when the weapon is put away.
 local rightShoulder    -- Motor6D in Torso
 local rightShoulderC0  -- CFrame snapshot of rest C0
 local armRaised = false
@@ -67,7 +69,11 @@ end
 local function refreshShoulder()
 	if not rightShoulder or not rightShoulder.Parent then
 		rightShoulder = captureRightShoulder()
-		if rightShoulder then rightShoulderC0 = rightShoulder.C0 end
+		if rightShoulder then
+			rightShoulderC0 = rightShoulder.C0
+			-- Disable so the Animator can never write to this joint's Transform.
+			rightShoulder.Enabled = false
+		end
 	end
 end
 
@@ -87,6 +93,7 @@ local function lowerArm()
 	if rightShoulder and rightShoulder.Parent and rightShoulderC0 then
 		rightShoulder.C0 = rightShoulderC0
 		rightShoulder.Transform = CFrame.new()
+		rightShoulder.Enabled = true
 	end
 	armRaised = false
 	rightShoulder = nil
@@ -229,6 +236,7 @@ RunService:BindToRenderStep(RENDER_BIND_NAME, Enum.RenderPriority.Last.Value + 1
 	if armRaised then
 		refreshShoulder()
 		if rightShoulder and rightShoulderC0 then
+			rightShoulder.Enabled = false
 			-- Rotate ONLY the orientation of the shoulder joint -- keep
 			-- its position locked to the original anchor at the top-right
 			-- corner of the torso. If we just left-multiply Angles(90,0,0)
@@ -327,10 +335,18 @@ end
 
 function WeaponClient.SetOwned(weapons, currentId)
 	WeaponClient._ownedWeapons = weapons
-	-- Respect an explicit "weapon holstered" choice. Otherwise every time
-	-- the server pushes player state (kills, purchases, etc) we'd silently
-	-- re-equip the gun and the player could never put it away.
-	if WeaponClient._userUnequipped then return end
+	-- If the player's currently-equipped weapon got locked out by the server
+	-- (e.g. they bought a higher-tier weapon), fall through and equip the
+	-- new current one. Otherwise respect a deliberate "weapon holstered"
+	-- choice the player already made.
+	local stillOwnsCurrent = currentWeaponId and weapons[currentWeaponId]
+	if WeaponClient._userUnequipped and stillOwnsCurrent then return end
+	if not stillOwnsCurrent then
+		-- Force-detach the now-locked weapon model so it doesn't dangle
+		-- in the player's hand when the new one auto-equips.
+		detachCurrent()
+		WeaponClient._userUnequipped = false
+	end
 	if currentId and weapons[currentId] then
 		equip(currentId)
 	elseif weapons.Pistol then
@@ -351,8 +367,8 @@ localPlayer.CharacterAdded:Connect(function()
 	task.wait(0.5)
 	WeaponClient._userUnequipped = false
 	local id = currentWeaponId
-	if not id or not Config.Weapons[id] then
-		local owned = WeaponClient._ownedWeapons or {}
+	local owned = WeaponClient._ownedWeapons or {}
+	if not id or not Config.Weapons[id] or not owned[id] then
 		id = owned.Pistol and "Pistol" or nil
 	end
 	if id then equip(id) end
