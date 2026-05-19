@@ -30,17 +30,20 @@ local isFiring = false
 local clusterSpin = 0
 local recoilOffset = 0 -- decays each frame
 
--- Arm-raise tracking. While a weapon is equipped we override the right
--- shoulder Motor6D to point the arm forward AND we DISABLE the motor so
--- Roblox's stock R6 `Animate` LocalScript -- which keyframes walk / run /
--- jump / idle animations into every shoulder Transform via the Animator --
--- physically cannot drive this joint. A disabled Motor6D still rigidly
--- welds Part0 to Part1 using its C0/C1, but the Animator skips it.
--- The LEFT arm is left completely alone -- it keeps its normal idle and
--- walk animation. Original C0 + Enabled state are cached so we can fully
--- restore the natural rest pose when the weapon is put away.
-local rightShoulder    -- Motor6D in Torso
-local rightShoulderC0  -- CFrame snapshot of rest C0
+-- Arm-raise tracking. While a weapon is equipped we want the gun-arm to
+-- point straight forward AND ignore every walk / run / jump / idle anim
+-- the stock R6 `Animate` LocalScript tries to play on it. The robust way
+-- to do that is to REPLACE the Right Shoulder Motor6D with a plain Weld:
+--   * Weld rigidly fixes Part0 -> Part1 using its C0/C1 (arm stays attached)
+--   * Roblox's Animator only writes to Motor6D, never to Weld, so the
+--     animation system literally cannot drive this joint anymore
+-- We keep a snapshot of the original Motor6D's C0/C1 so we can rebuild it
+-- when the weapon is put away (or when the character is rebuilt on spawn).
+local shoulderWeld           -- the Weld that's currently locking the arm
+local shoulderRestC0         -- original Motor6D C0 (rest "hanging down" pose)
+local shoulderRestC1         -- original Motor6D C1
+local shoulderTorso          -- Torso the joint lives on
+local shoulderArmPart        -- Right Arm part the joint connects to
 local armRaised = false
 
 local function getCharacterParts()
@@ -52,52 +55,100 @@ local function getCharacterParts()
 	return character, hum, rightHand, hrp
 end
 
--- Grab the player's R6 Right Shoulder Motor6D (lives in Torso).
-local function captureRightShoulder()
-	local character = localPlayer.Character
-	if not character then return nil end
-	local torso = character:FindFirstChild("Torso")
-	if not torso then return nil end
-	local m = torso:FindFirstChild("Right Shoulder")
-	if not m or not m:IsA("Motor6D") then return nil end
-	return m
-end
-
--- (Re)discover the right shoulder and cache its original rest C0. Called
--- both on first raise and lazily inside RenderStepped if the character
--- was rebuilt (e.g. the R6 force-rebuild on spawn destroys old motors).
-local function refreshShoulder()
-	if not rightShoulder or not rightShoulder.Parent then
-		rightShoulder = captureRightShoulder()
-		if rightShoulder then
-			rightShoulderC0 = rightShoulder.C0
-			-- Disable so the Animator can never write to this joint's Transform.
-			rightShoulder.Enabled = false
-		end
+-- Apply the locked C0 to whatever joint type we currently own (Weld during
+-- equip, Motor6D as a fallback if for some reason the swap didn't happen).
+local function setLockedC0(angleRad)
+	if not shoulderRestC0 then return end
+	local target = CFrame.new(shoulderRestC0.Position)
+		* CFrame.Angles(angleRad, 0, 0)
+		* shoulderRestC0.Rotation
+	if shoulderWeld and shoulderWeld.Parent then
+		shoulderWeld.C0 = target
 	end
 end
 
+-- Find the Right Shoulder joint (Motor6D OR our previously-installed Weld)
+-- in the current character's Torso.
+local function findExistingShoulderJoint()
+	local character = localPlayer.Character
+	if not character then return nil, nil end
+	local torso = character:FindFirstChild("Torso")
+	if not torso then return nil, nil end
+	local j = torso:FindFirstChild("Right Shoulder")
+	return j, torso
+end
+
+-- Replace the stock R6 Right Shoulder Motor6D with a Weld, rotated forward.
+-- If we've already done it (e.g. weapon hotkey pressed twice) -- bail out
+-- so we don't compound the rotation onto our own Weld's C0.
 local function raiseArm()
-	-- IMPORTANT: if the arm is already raised, do NOT recapture C0.
-	-- The current C0 is our previously-rotated pose, not the rest pose;
-	-- recapturing it and rotating again accumulates every press of the
-	-- weapon hotkey, ending up with the arm pointing random directions.
-	if armRaised and rightShoulder and rightShoulder.Parent then
+	if armRaised and shoulderWeld and shoulderWeld.Parent then
 		return
 	end
-	refreshShoulder()
-	armRaised = rightShoulder ~= nil
+
+	local joint, torso = findExistingShoulderJoint()
+	if not joint or not torso then return end
+
+	if joint:IsA("Weld") then
+		-- Already locked (probably by us, after a respawn re-equip). Just
+		-- adopt it and re-derive armRaised state.
+		shoulderWeld = joint
+		shoulderTorso = torso
+		shoulderArmPart = joint.Part1
+		armRaised = true
+		return
+	end
+	if not joint:IsA("Motor6D") then return end
+
+	-- Snapshot the original motor so we can rebuild it on lowerArm.
+	shoulderRestC0 = joint.C0
+	shoulderRestC1 = joint.C1
+	shoulderTorso = joint.Part0
+	shoulderArmPart = joint.Part1
+
+	-- Build the replacement Weld at the rotated pose. Same name so any
+	-- code looking up "Right Shoulder" (HUDs, third-party scripts, etc)
+	-- still finds it -- it just happens to be a Weld now, not a Motor6D.
+	local weld = Instance.new("Weld")
+	weld.Name = "Right Shoulder"
+	weld.Part0 = shoulderTorso
+	weld.Part1 = shoulderArmPart
+	weld.C0 = CFrame.new(shoulderRestC0.Position)
+		* CFrame.Angles(math.rad(90), 0, 0)
+		* shoulderRestC0.Rotation
+	weld.C1 = shoulderRestC1
+	weld.Parent = torso
+
+	-- Now destroy the original Motor6D. Order matters: the Weld is parented
+	-- first, so the arm is held by it before the Motor6D goes away. There's
+	-- never an instant where the arm is unparented to anything.
+	joint:Destroy()
+
+	shoulderWeld = weld
+	armRaised = true
 end
 
 local function lowerArm()
-	if rightShoulder and rightShoulder.Parent and rightShoulderC0 then
-		rightShoulder.C0 = rightShoulderC0
-		rightShoulder.Transform = CFrame.new()
-		rightShoulder.Enabled = true
+	-- Tear down our Weld and put the original Motor6D back so the Animate
+	-- script can resume driving the arm normally.
+	if shoulderWeld and shoulderWeld.Parent then
+		shoulderWeld:Destroy()
 	end
+	if shoulderTorso and shoulderTorso.Parent and shoulderArmPart and shoulderArmPart.Parent then
+		local motor = Instance.new("Motor6D")
+		motor.Name = "Right Shoulder"
+		motor.Part0 = shoulderTorso
+		motor.Part1 = shoulderArmPart
+		motor.C0 = shoulderRestC0 or CFrame.new()
+		motor.C1 = shoulderRestC1 or CFrame.new()
+		motor.Parent = shoulderTorso
+	end
+	shoulderWeld = nil
+	shoulderRestC0 = nil
+	shoulderRestC1 = nil
+	shoulderTorso = nil
+	shoulderArmPart = nil
 	armRaised = false
-	rightShoulder = nil
-	rightShoulderC0 = nil
 end
 
 local function detachCurrent()
@@ -225,36 +276,27 @@ RunService:BindToRenderStep(RENDER_BIND_NAME, Enum.RenderPriority.Last.Value + 1
 		heldWeld.C0 = CFrame.new(0, -1, -0.5) * CFrame.Angles(math.rad(-90) + rec * 0.5, rec * 0.05, 0)
 	end
 
-	-- Continuously override the RIGHT shoulder so the default Roblox
-	-- Animate script's walk/idle keyframes can't drop the gun-arm. We
-	-- run on RenderStepped so we get the last word before the frame is
-	-- drawn. The LEFT arm is deliberately untouched -- it keeps its
-	-- normal idle/walk swing.
-	--   * C0  -> raised straight forward (90deg)
-	--   * Transform -> identity (kills the shoulder swing baked into
-	--     Animate's walk/run/idle animations)
+	-- Continuously update the locked shoulder pose so recoil reads on the
+	-- weapon arm (the arm kicks slightly upward past forward and decays
+	-- back). The arm is held by a Weld we installed in raiseArm(), so the
+	-- stock R6 `Animate` LocalScript's walk/idle/jump animations have no
+	-- way to drive this joint -- Animator only writes to Motor6D, never
+	-- to Weld. The LEFT arm and legs / torso are untouched, so the rest
+	-- of the body still walks and idles normally.
 	if armRaised then
-		refreshShoulder()
-		if rightShoulder and rightShoulderC0 then
-			rightShoulder.Enabled = false
-			-- Rotate ONLY the orientation of the shoulder joint -- keep
-			-- its position locked to the original anchor at the top-right
-			-- corner of the torso. If we just left-multiply Angles(90,0,0)
-			-- onto the whole C0, the X-rotation also drags the position
-			-- component: the shoulder anchor swings from (1, 0.5, 0) to
-			-- (1, 0, 0.5), i.e. into the BACK face of the torso. The arm
-			-- then visibly starts behind the body and pokes out the back.
-			-- Splitting C0 into its Position and Rotation parts and only
-			-- rotating the Rotation part keeps the shoulder pinned where
-			-- it should be while still swinging the arm forward.
-			--   * Angles(90 + recoil, 0, 0) rotates the rest "hanging
-			--     down" pose to "stretched forward". Recoil kicks the
-			--     arm slightly further up past forward.
+		-- If the arm somehow got "unraised" by a respawn-mid-life, re-raise.
+		if not shoulderWeld or not shoulderWeld.Parent then
+			armRaised = false
+			raiseArm()
+		end
+		if shoulderWeld and shoulderWeld.Parent and shoulderRestC0 then
+			-- Rotate ONLY the orientation of the joint -- keep its position
+			-- locked at the original anchor (top-right corner of the torso).
+			-- See the long comment in the previous revision: rotating the
+			-- whole CFrame would drag the position component into the back
+			-- face of the torso, making the arm visibly poke out the back.
 			local rec = math.rad(recoilOffset)
-			rightShoulder.C0 = CFrame.new(rightShoulderC0.Position)
-				* CFrame.Angles(math.rad(90) + rec * 0.3, 0, 0)
-				* rightShoulderC0.Rotation
-			rightShoulder.Transform = CFrame.new()
+			setLockedC0(math.rad(90) + rec * 0.3)
 		end
 	end
 

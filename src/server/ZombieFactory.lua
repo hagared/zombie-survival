@@ -182,36 +182,53 @@ function ZombieFactory.Animate(model, motors)
 	local diedHandled = false
 	local humanoid = model:FindFirstChildOfClass("Humanoid")
 
-	-- Ragdoll on death: break joints + give the torso a small backward
-	-- shove so the corpse falls in a direction matching the kill, and
-	-- recolor the body slightly grey for that "spent" look. We also turn
-	-- HumanoidRootPart non-massless temporarily so the parts settle on
-	-- the ground instead of floating.
+	-- Ragdoll on death: instead of breaking every Motor6D (which makes the
+	-- body visually FRAGMENT into floating limbs), we keep the rig
+	-- assembled and just take the Humanoid out of the driver's seat. The
+	-- corpse falls as a single rigid body, tumbles into place, and reads
+	-- as "dead zombie" without splattering apart. Recolour the torso
+	-- toward grey for that "spent" look.
 	local function ragdoll()
 		if diedHandled then return end
 		diedHandled = true
-		local torso = model:FindFirstChild("Torso")
-		local hrp = model:FindFirstChild("HumanoidRootPart")
-		-- Break every Motor6D so each limb becomes its own free part. The
-		-- Humanoid dies regardless; we just want a tumbling corpse.
-		for _, d in ipairs(model:GetDescendants()) do
-			if d:IsA("Motor6D") then
-				d:Destroy()
+		-- Stop the procedural animator -- the whole point of "dead" is no
+		-- more pose updates, just physics.
+		if conn then conn:Disconnect() end
+
+		if humanoid then
+			-- PlatformStand makes the Humanoid stop trying to balance / stand,
+			-- and Physics state hands control of the parts to the engine.
+			-- Together they let the rig fall over instead of frozen-standing.
+			humanoid.PlatformStand = true
+			humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+			humanoid.WalkSpeed = 0
+			humanoid.JumpPower = 0
+		end
+
+		-- Make every part collide so the corpse lands on the ground rather
+		-- than having the lighter limbs (arms, HRP) phase through. Also clear
+		-- the HRP's Massless flag so it adds weight and the assembly settles.
+		for _, part in ipairs(model:GetChildren()) do
+			if part:IsA("BasePart") then
+				part.CanCollide = true
+				part.Massless = false
 			end
 		end
+
+		local torso = model:FindFirstChild("Torso")
 		if torso then
 			torso.Color = torso.Color:Lerp(Color3.fromRGB(60, 60, 65), 0.4)
-			-- Toss the torso a bit in the look direction so it falls forward.
-			local dir = torso.CFrame.LookVector
-			torso.AssemblyLinearVelocity = Vector3.new(dir.X, 0.5, dir.Z) * 14
-				+ Vector3.new(math.random() - 0.5, 0, math.random() - 0.5) * 6
+			-- Toss the torso forward in the direction the zombie was facing,
+			-- plus a small upward kick and a randomized tumble so the body
+			-- visually "falls dead" instead of just sliding flat.
+			local fwd = torso.CFrame.LookVector
+			torso.AssemblyLinearVelocity = Vector3.new(fwd.X, 0.4, fwd.Z) * 12
 			torso.AssemblyAngularVelocity = Vector3.new(
-				(math.random() - 0.5) * 8,
-				(math.random() - 0.5) * 8,
-				(math.random() - 0.5) * 8
+				(math.random() - 0.5) * 5,
+				(math.random() - 0.5) * 5,
+				(math.random() - 0.5) * 5
 			)
 		end
-		if hrp then hrp.Massless = false end
 	end
 
 	if humanoid then
