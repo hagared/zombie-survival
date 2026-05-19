@@ -199,7 +199,17 @@ local function fire()
 end
 
 -- Per-frame: recoil decay, weapon sway, minigun spin, camera kick.
-RunService.RenderStepped:Connect(function(dt)
+--
+-- Bound at Enum.RenderPriority.Last.Value + 1 so we run AFTER the camera AND
+-- AFTER Roblox's Animator has finished writing animation deltas into every
+-- Motor6D's `Transform` for this frame. With a plain `RenderStepped:Connect`
+-- (default priority = Camera ~200) the Animator could in some frames win the
+-- race and the gun-arm would visibly twitch with the walk / jump animation.
+-- Running last guarantees our `Transform = identity` and our forward-arm C0
+-- are the very last things written before the GPU draws this frame, so the
+-- shoulder is rock-frozen no matter what other animations are playing.
+local RENDER_BIND_NAME = "WeaponClient_PerFrame"
+RunService:BindToRenderStep(RENDER_BIND_NAME, Enum.RenderPriority.Last.Value + 1, function(dt)
 	recoilOffset = math.max(0, recoilOffset - dt * 90)
 
 	if currentModel and heldWeld then

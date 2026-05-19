@@ -231,15 +231,23 @@ local function buildMountains(parent)
 end
 
 local function buildZombieSpawners(parent)
-	-- 8 spawn points spread around the edge of the arena, on the road ring.
-	local half = MAP_SIZE / 2 - 50
-	local points = {
-		Vector3.new(half, 5, 0), Vector3.new(-half, 5, 0),
-		Vector3.new(0, 5, half), Vector3.new(0, 5, -half),
-		Vector3.new(half, 5, half), Vector3.new(-half, 5, -half),
-		Vector3.new(half, 5, -half), Vector3.new(-half, 5, half),
-	}
-	for i, pos in ipairs(points) do
+	-- 8 spawn points evenly spread on a circle of radius 65 -- inside the
+	-- ring of buildings (innermost ring starts at radius ~92 = 105-13) and
+	-- well outside the 60x60 plaza. The OLD spawn ring at radius 160
+	-- collided directly with the corner towers at (+/-150, +/-150) and the
+	-- random ring-3 buildings, so a chunk of zombies were spawning INSIDE
+	-- walls or on rooftops where the no-jump pathfinder couldn't free them.
+	-- Putting spawns on this clean inner band guarantees a free patch of
+	-- ground and a clear walk to the players standing on the plaza.
+	-- Angles are offset by half a step so spawn points sit between the
+	-- main axes and the diagonals -- avoids any directional bias.
+	local r = 65
+	local count = 8
+	for i = 1, count do
+		local angle = (i - 1) * (math.pi * 2 / count) + math.pi / count
+		local cx = math.cos(angle) * r
+		local cz = math.sin(angle) * r
+		local pos = Vector3.new(cx, 5, cz)
 		local marker = makePart({
 			Name = "ZombieSpawn_" .. i,
 			Size = Vector3.new(4, 0.4, 4),
@@ -251,6 +259,54 @@ local function buildZombieSpawners(parent)
 		marker.Parent = parent
 		table.insert(ZOMBIE_SPAWN_POINTS, pos)
 	end
+end
+
+-- Invisible safety geometry around the playable arena:
+--   1. Four tall barrier walls just outside the arena edge so zombies (whose
+--      pathfinder can't jump or climb) can't path INTO the mountain ring and
+--      get stuck or wander off into the void between rocks.
+--   2. A huge kill-plane at y = -30. Anything that somehow ends up below the
+--      map -- a zombie that fell through geometry, a mine projectile, etc --
+--      gets killed on contact so the wave counter doesn't hang on a missing
+--      zombie.
+local function buildArenaBarriers(parent)
+	local edgeY = 80
+	local edgeT = 4
+	local edgeL = MAP_SIZE + 40
+	local edgeD = MAP_SIZE / 2 + 4
+	local sides = {
+		{ size = Vector3.new(edgeL, edgeY, edgeT), pos = Vector3.new(0, edgeY / 2, edgeD) },
+		{ size = Vector3.new(edgeL, edgeY, edgeT), pos = Vector3.new(0, edgeY / 2, -edgeD) },
+		{ size = Vector3.new(edgeT, edgeY, edgeL), pos = Vector3.new(edgeD, edgeY / 2, 0) },
+		{ size = Vector3.new(edgeT, edgeY, edgeL), pos = Vector3.new(-edgeD, edgeY / 2, 0) },
+	}
+	for i, s in ipairs(sides) do
+		local b = makePart({
+			Name = "ArenaBarrier_" .. i,
+			Size = s.size,
+			Position = s.pos,
+			Transparency = 1,
+		})
+		b.CanCollide = true
+		b.CastShadow = false
+		b.Parent = parent
+	end
+
+	local killBlock = makePart({
+		Name = "FallKill",
+		Size = Vector3.new(MAP_SIZE * 4, 1, MAP_SIZE * 4),
+		Position = Vector3.new(0, -30, 0),
+		Transparency = 1,
+	})
+	killBlock.CanCollide = false
+	killBlock.CastShadow = false
+	killBlock.Parent = parent
+	killBlock.Touched:Connect(function(hit)
+		local hum = hit.Parent and hit.Parent:FindFirstChildOfClass("Humanoid")
+		if hum then
+			hum.Health = 0
+		end
+	end)
 end
 
 function MapGenerator.Build()
@@ -266,6 +322,7 @@ function MapGenerator.Build()
 	buildBuildings(mapFolder)
 	buildMountains(mapFolder)
 	buildZombieSpawners(mapFolder)
+	buildArenaBarriers(mapFolder)
 
 	return mapFolder
 end
