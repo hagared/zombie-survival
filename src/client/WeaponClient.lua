@@ -219,17 +219,23 @@ RunService.RenderStepped:Connect(function(dt)
 	if armRaised then
 		refreshShoulder()
 		if rightShoulder and rightShoulderC0 then
-			-- Rotate in the TORSO's local space (left-multiply), not the
-			-- joint's local space. The R6 Right Shoulder's default C0 has
-			-- a 90deg yaw baked in, so its local X axis points sideways
-			-- (along world Z). Rotating around it tilts the arm OUT to
-			-- the side, which is the bug we're fixing. Rotating around
-			-- the torso's X axis by +90deg cleanly swings the arm from
-			-- "hanging down at rest" to "stretched forward" -- the
-			-- zombie / shooter pose. Recoil adds a small extra positive
-			-- rotation so the arm kicks UPWARD past forward toward up.
+			-- Rotate ONLY the orientation of the shoulder joint -- keep
+			-- its position locked to the original anchor at the top-right
+			-- corner of the torso. If we just left-multiply Angles(90,0,0)
+			-- onto the whole C0, the X-rotation also drags the position
+			-- component: the shoulder anchor swings from (1, 0.5, 0) to
+			-- (1, 0, 0.5), i.e. into the BACK face of the torso. The arm
+			-- then visibly starts behind the body and pokes out the back.
+			-- Splitting C0 into its Position and Rotation parts and only
+			-- rotating the Rotation part keeps the shoulder pinned where
+			-- it should be while still swinging the arm forward.
+			--   * Angles(90 + recoil, 0, 0) rotates the rest "hanging
+			--     down" pose to "stretched forward". Recoil kicks the
+			--     arm slightly further up past forward.
 			local rec = math.rad(recoilOffset)
-			rightShoulder.C0 = CFrame.Angles(math.rad(90) + rec * 0.3, 0, 0) * rightShoulderC0
+			rightShoulder.C0 = CFrame.new(rightShoulderC0.Position)
+				* CFrame.Angles(math.rad(90) + rec * 0.3, 0, 0)
+				* rightShoulderC0.Rotation
 			rightShoulder.Transform = CFrame.new()
 		end
 	end
