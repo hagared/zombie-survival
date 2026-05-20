@@ -187,23 +187,31 @@ local function setOwned(weapons)
 end
 
 -- ===== Announcement toast =====
+-- Sits below the top bar. Toast must read clearly on top of the busy game
+-- world, so we use a dark near-opaque background, a chunky black stroke
+-- around the text (TextStrokeTransparency=0), and a heavy display font.
+-- Foreground colour is supplied by the caller (red for "wave incoming",
+-- green for "wave cleared", etc), but the black outline keeps even pale
+-- colours legible against bright sky / explosion flashes.
 local toast = styled({
 	Class = "TextLabel",
-	BackgroundColor3 = Color3.fromRGB(20, 20, 25),
-	BackgroundTransparency = 0.2,
+	BackgroundColor3 = Color3.fromRGB(15, 15, 18),
+	BackgroundTransparency = 0.05,
 	BorderSizePixel = 0,
 	AnchorPoint = Vector2.new(0.5, 0),
 	Position = UDim2.new(0.5, 0, 0, 70),
-	Size = UDim2.new(0, 480, 0, 50),
+	Size = UDim2.new(0, 520, 0, 64),
 	Text = "",
-	Font = Enum.Font.GothamBlack,
-	TextSize = 24,
+	Font = Enum.Font.FredokaOne,
+	TextSize = 32,
 	TextColor3 = Color3.fromRGB(255, 220, 90),
+	TextStrokeColor3 = Color3.fromRGB(0, 0, 0),
+	TextStrokeTransparency = 0,
 	Visible = false,
 	Parent = screen,
 })
 local tcorner = Instance.new("UICorner", toast)
-tcorner.CornerRadius = UDim.new(0, 12)
+tcorner.CornerRadius = UDim.new(0, 14)
 local tstroke = Instance.new("UIStroke", toast)
 tstroke.Color = Color3.fromRGB(255, 220, 80)
 tstroke.Thickness = 2
@@ -215,17 +223,20 @@ local function showToast(text, color)
 	toast.Position = UDim2.new(0.5, 0, 0, 40)
 	toast.BackgroundTransparency = 1
 	toast.TextTransparency = 1
+	toast.TextStrokeTransparency = 1
 	toast.Visible = true
 	TweenService:Create(toast, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 		Position = UDim2.new(0.5, 0, 0, 80),
-		BackgroundTransparency = 0.2,
+		BackgroundTransparency = 0.05,
 		TextTransparency = 0,
+		TextStrokeTransparency = 0,
 	}):Play()
 	task.delay(2.5, function()
 		TweenService:Create(toast, TweenInfo.new(0.5, Enum.EasingStyle.Quad), {
 			Position = UDim2.new(0.5, 0, 0, 40),
 			BackgroundTransparency = 1,
 			TextTransparency = 1,
+			TextStrokeTransparency = 1,
 		}):Play()
 		task.delay(0.55, function()
 			if toast.TextTransparency >= 0.95 then
