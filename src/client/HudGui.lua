@@ -188,8 +188,11 @@ end
 
 -- ===== Announcement toast =====
 -- Sits below the top bar. Toast must read clearly on top of the busy game
--- world, so we use a dark near-opaque background, a chunky black stroke
--- around the text (TextStrokeTransparency=0), and a heavy display font.
+-- world, so we use a dark near-opaque background and a chunky black stroke
+-- around the text (TextStrokeTransparency=0). Font is GothamBlack -- same
+-- as the $/Wave labels in the top bar so the HUD reads consistently, and
+-- it supports Cyrillic + Latin properly (the previous FredokaOne mangled
+-- non-Latin characters into unreadable glyph soup).
 -- Foreground colour is supplied by the caller (red for "wave incoming",
 -- green for "wave cleared", etc), but the black outline keeps even pale
 -- colours legible against bright sky / explosion flashes.
@@ -202,8 +205,8 @@ local toast = styled({
 	Position = UDim2.new(0.5, 0, 0, 70),
 	Size = UDim2.new(0, 520, 0, 64),
 	Text = "",
-	Font = Enum.Font.FredokaOne,
-	TextSize = 32,
+	Font = Enum.Font.GothamBlack,
+	TextSize = 30,
 	TextColor3 = Color3.fromRGB(255, 220, 90),
 	TextStrokeColor3 = Color3.fromRGB(0, 0, 0),
 	TextStrokeTransparency = 0,
