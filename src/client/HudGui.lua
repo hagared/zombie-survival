@@ -187,14 +187,15 @@ local function setOwned(weapons)
 end
 
 -- ===== Announcement toast =====
--- Sits below the top bar. Same look as the $-counter in the top bar:
--- GothamBlack font (Cyrillic + Latin friendly), default yellow
--- foreground, just bigger so it pops as a wave announcement. We drop
--- the heavy black TextStroke outline -- it was making the text read
--- as a thick blob that the user couldn't actually parse. The dark
--- near-opaque toast background already gives plenty of contrast.
+-- Same understated look as the "Next wave in Ns" intermission timer:
+-- GothamSemibold (medium weight, not GothamBlack -- the user found
+-- GothamBlack reads as too thick / heavy) and a soft off-white default
+-- colour, so the toast feels informational rather than shouting at the
+-- player. The dark near-opaque toast background gives enough contrast
+-- that no text outline is needed.
 -- Caller-supplied colour (red for "wave incoming", green for "wave
--- cleared") still wins over the default.
+-- cleared") still wins over the default when something dramatic
+-- happens.
 local toast = styled({
 	Class = "TextLabel",
 	BackgroundColor3 = Color3.fromRGB(15, 15, 18),
@@ -202,16 +203,11 @@ local toast = styled({
 	BorderSizePixel = 0,
 	AnchorPoint = Vector2.new(0.5, 0),
 	Position = UDim2.new(0.5, 0, 0, 70),
-	Size = UDim2.new(0, 600, 0, 60),
+	Size = UDim2.new(0, 600, 0, 56),
 	Text = "",
-	-- Match the $-counter in the top bar exactly: same GothamBlack at the
-	-- same TextSize 32, same default yellow. The user said the text was
-	-- "too thick" -- TextSize 40 was scaling GothamBlack into a heavy
-	-- blob. At 32, GothamBlack reads as a clean sharp display weight,
-	-- the way the $80 label does.
-	Font = Enum.Font.GothamBlack,
-	TextSize = 32,
-	TextColor3 = Color3.fromRGB(255, 220, 90),
+	Font = Enum.Font.GothamSemibold,
+	TextSize = 24,
+	TextColor3 = Color3.fromRGB(220, 230, 240),
 	TextStrokeTransparency = 1, -- no outline, keeps letters crisp
 	Visible = false,
 	Parent = screen,
@@ -219,13 +215,14 @@ local toast = styled({
 local tcorner = Instance.new("UICorner", toast)
 tcorner.CornerRadius = UDim.new(0, 14)
 local tstroke = Instance.new("UIStroke", toast)
-tstroke.Color = Color3.fromRGB(255, 200, 60)
-tstroke.Thickness = 2
+tstroke.Color = Color3.fromRGB(120, 130, 145)
+tstroke.Thickness = 1
+tstroke.Transparency = 0.4
 
 local function showToast(text, color)
 	toast.Text = text
-	toast.TextColor3 = color or Color3.fromRGB(255, 220, 90)
-	tstroke.Color = color or Color3.fromRGB(255, 200, 60)
+	toast.TextColor3 = color or Color3.fromRGB(220, 230, 240)
+	tstroke.Color = color or Color3.fromRGB(120, 130, 145)
 	toast.Position = UDim2.new(0.5, 0, 0, 40)
 	toast.BackgroundTransparency = 1
 	toast.TextTransparency = 1
