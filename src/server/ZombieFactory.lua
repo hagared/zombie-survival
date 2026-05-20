@@ -182,32 +182,23 @@ function ZombieFactory.Animate(model, motors)
 	local diedHandled = false
 	local humanoid = model:FindFirstChildOfClass("Humanoid")
 
-	-- Ragdoll on death: instead of breaking every Motor6D (which makes the
-	-- body visually FRAGMENT into floating limbs), we keep the rig
-	-- assembled and just take the Humanoid out of the driver's seat. The
-	-- corpse falls as a single rigid body, tumbles into place, and reads
-	-- as "dead zombie" without splattering apart. Recolour the torso
-	-- toward grey for that "spent" look.
+	-- Ragdoll on death: keep the rig assembled (don't break Motor6Ds) and
+	-- hand the body to the physics engine so it falls as one rigid piece.
+	-- After a short settle time, darken to black and sink into the ground.
 	local function ragdoll()
 		if diedHandled then return end
 		diedHandled = true
-		-- Stop the procedural animator -- the whole point of "dead" is no
-		-- more pose updates, just physics.
+		-- Stop the procedural animator.
 		if conn then conn:Disconnect() end
 
 		if humanoid then
-			-- PlatformStand makes the Humanoid stop trying to balance / stand,
-			-- and Physics state hands control of the parts to the engine.
-			-- Together they let the rig fall over instead of frozen-standing.
 			humanoid.PlatformStand = true
 			humanoid:ChangeState(Enum.HumanoidStateType.Physics)
 			humanoid.WalkSpeed = 0
 			humanoid.JumpPower = 0
 		end
 
-		-- Make every part collide so the corpse lands on the ground rather
-		-- than having the lighter limbs (arms, HRP) phase through. Also clear
-		-- the HRP's Massless flag so it adds weight and the assembly settles.
+		-- Make every part collide so the corpse lands on the ground.
 		for _, part in ipairs(model:GetChildren()) do
 			if part:IsA("BasePart") then
 				part.CanCollide = true
@@ -217,10 +208,7 @@ function ZombieFactory.Animate(model, motors)
 
 		local torso = model:FindFirstChild("Torso")
 		if torso then
-			torso.Color = torso.Color:Lerp(Color3.fromRGB(60, 60, 65), 0.4)
-			-- Toss the torso forward in the direction the zombie was facing,
-			-- plus a small upward kick and a randomized tumble so the body
-			-- visually "falls dead" instead of just sliding flat.
+			-- Toss the body forward so it visibly falls in a direction.
 			local fwd = torso.CFrame.LookVector
 			torso.AssemblyLinearVelocity = Vector3.new(fwd.X, 0.4, fwd.Z) * 12
 			torso.AssemblyAngularVelocity = Vector3.new(
@@ -229,6 +217,52 @@ function ZombieFactory.Animate(model, motors)
 				(math.random() - 0.5) * 5
 			)
 		end
+
+		-- After 1.5s let the corpse settle, then darken + sink into ground.
+		task.delay(1.5, function()
+			if not model.Parent then return end
+
+			-- Phase 1: darken all parts to near-black over 0.6s.
+			local TweenService = game:GetService("TweenService")
+			local sinkParts = {}
+			for _, part in ipairs(model:GetChildren()) do
+				if part:IsA("BasePart") then
+					table.insert(sinkParts, part)
+					TweenService:Create(part, TweenInfo.new(0.6), {
+						Color = Color3.fromRGB(15, 15, 18),
+					}):Play()
+				end
+			end
+
+			-- Phase 2: after darkening, sink downward + fade out over 1.2s.
+			task.delay(0.6, function()
+				if not model.Parent then return end
+				-- Anchor everything so physics doesn't fight the sink tween,
+				-- and disable collision so limbs don't catch on the ground.
+				for _, part in ipairs(sinkParts) do
+					if part.Parent then
+						part.Anchored = true
+						part.CanCollide = false
+					end
+				end
+				-- Tween every part downward by 5 studs + fade to transparent.
+				for _, part in ipairs(sinkParts) do
+					if part.Parent then
+						local goal = {
+							Position = part.Position - Vector3.new(0, 5, 0),
+							Transparency = 1,
+						}
+						TweenService:Create(part, TweenInfo.new(1.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In), goal):Play()
+					end
+				end
+				-- Destroy the model after the sink is complete.
+				task.delay(1.3, function()
+					if model.Parent then
+						model:Destroy()
+					end
+				end)
+			end)
+		end)
 	end
 
 	if humanoid then

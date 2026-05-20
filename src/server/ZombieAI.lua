@@ -117,7 +117,9 @@ function ZombieAI.Register(model, humanoid, onKilled)
 		if onKilled then
 			onKilled(model)
 		end
-		Debris:AddItem(model, 4)
+		-- Model cleanup is handled by ZombieFactory.Animate (sink-into-ground
+		-- sequence). Don't Debris:AddItem here or the body may vanish before
+		-- the sink animation finishes.
 	end)
 end
 
