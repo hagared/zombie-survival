@@ -187,59 +187,54 @@ local function setOwned(weapons)
 end
 
 -- ===== Announcement toast =====
--- Sits below the top bar. Toast must read clearly on top of the busy game
--- world, so we use a dark near-opaque background and a chunky black stroke
--- around the text (TextStrokeTransparency=0). Font is GothamBlack -- same
--- as the $/Wave labels in the top bar so the HUD reads consistently, and
--- it supports Cyrillic + Latin properly (the previous FredokaOne mangled
--- non-Latin characters into unreadable glyph soup).
--- Foreground colour is supplied by the caller (red for "wave incoming",
--- green for "wave cleared", etc), but the black outline keeps even pale
--- colours legible against bright sky / explosion flashes.
+-- Sits below the top bar. Same look as the $-counter in the top bar:
+-- GothamBlack font (Cyrillic + Latin friendly), default yellow
+-- foreground, just bigger so it pops as a wave announcement. We drop
+-- the heavy black TextStroke outline -- it was making the text read
+-- as a thick blob that the user couldn't actually parse. The dark
+-- near-opaque toast background already gives plenty of contrast.
+-- Caller-supplied colour (red for "wave incoming", green for "wave
+-- cleared") still wins over the default.
 local toast = styled({
 	Class = "TextLabel",
 	BackgroundColor3 = Color3.fromRGB(15, 15, 18),
-	BackgroundTransparency = 0.05,
+	BackgroundTransparency = 0.1,
 	BorderSizePixel = 0,
 	AnchorPoint = Vector2.new(0.5, 0),
 	Position = UDim2.new(0.5, 0, 0, 70),
-	Size = UDim2.new(0, 520, 0, 64),
+	Size = UDim2.new(0, 580, 0, 72),
 	Text = "",
 	Font = Enum.Font.GothamBlack,
-	TextSize = 30,
+	TextSize = 40,
 	TextColor3 = Color3.fromRGB(255, 220, 90),
-	TextStrokeColor3 = Color3.fromRGB(0, 0, 0),
-	TextStrokeTransparency = 0,
+	TextStrokeTransparency = 1, -- no chunky outline, keeps letters crisp
 	Visible = false,
 	Parent = screen,
 })
 local tcorner = Instance.new("UICorner", toast)
 tcorner.CornerRadius = UDim.new(0, 14)
 local tstroke = Instance.new("UIStroke", toast)
-tstroke.Color = Color3.fromRGB(255, 220, 80)
+tstroke.Color = Color3.fromRGB(255, 200, 60)
 tstroke.Thickness = 2
 
 local function showToast(text, color)
 	toast.Text = text
 	toast.TextColor3 = color or Color3.fromRGB(255, 220, 90)
-	tstroke.Color = color or Color3.fromRGB(255, 220, 80)
+	tstroke.Color = color or Color3.fromRGB(255, 200, 60)
 	toast.Position = UDim2.new(0.5, 0, 0, 40)
 	toast.BackgroundTransparency = 1
 	toast.TextTransparency = 1
-	toast.TextStrokeTransparency = 1
 	toast.Visible = true
 	TweenService:Create(toast, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 		Position = UDim2.new(0.5, 0, 0, 80),
-		BackgroundTransparency = 0.05,
+		BackgroundTransparency = 0.1,
 		TextTransparency = 0,
-		TextStrokeTransparency = 0,
 	}):Play()
 	task.delay(2.5, function()
 		TweenService:Create(toast, TweenInfo.new(0.5, Enum.EasingStyle.Quad), {
 			Position = UDim2.new(0.5, 0, 0, 40),
 			BackgroundTransparency = 1,
 			TextTransparency = 1,
-			TextStrokeTransparency = 1,
 		}):Play()
 		task.delay(0.55, function()
 			if toast.TextTransparency >= 0.95 then
