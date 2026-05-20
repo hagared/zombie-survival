@@ -165,25 +165,65 @@ for id, cfg in pairs(Config.Weapons) do
 	buildWeaponChip(id, cfg)
 end
 
+-- Track which chips are currently in the "Locked" visual state so the
+-- active-chip highlight (gold border) skips them on respawn / state push.
+local lockedChips = {}
+
 local function setActiveChip(id)
 	for chipId, chip in pairs(weaponChips) do
-		local goal = chipId == id
-			and { Color = Color3.fromRGB(255, 220, 80), Thickness = 3, Transparency = 0 }
-			or { Color = Color3.fromRGB(80, 80, 100), Thickness = 2, Transparency = 0.2 }
-		TweenService:Create(chip.Outline, TweenInfo.new(0.2), goal):Play()
+		-- Locked chips never get the gold "active" border -- they get a dim
+		-- red one to keep the "you can't use this anymore" reading.
+		if lockedChips[chipId] then
+			TweenService:Create(chip.Outline, TweenInfo.new(0.2), {
+				Color = Color3.fromRGB(120, 50, 50),
+				Thickness = 2,
+				Transparency = 0.4,
+			}):Play()
+		else
+			local goal = chipId == id
+				and { Color = Color3.fromRGB(255, 220, 80), Thickness = 3, Transparency = 0 }
+				or { Color = Color3.fromRGB(80, 80, 100), Thickness = 2, Transparency = 0.2 }
+			TweenService:Create(chip.Outline, TweenInfo.new(0.2), goal):Play()
+		end
 	end
 end
 
+-- Visual states for the bottom-bar weapon chips:
+--   * Owned:   bright bg, bright name, green "Owned" status
+--   * Locked:  dim translucent bg, grey name + key, red "Locked" status,
+--              red outline (set by setActiveChip). Player can clearly see
+--              the gun is gone -- not buyable, not equippable.
+--   * For sale: dim bg, grey name, yellow "$price" status.
 local function setOwned(weapons, lockedWeapons)
 	lockedWeapons = lockedWeapons or {}
+	-- Refresh which chips are in the locked state -- setActiveChip uses
+	-- this to decide whether to draw the gold or red outline.
+	for id in pairs(lockedChips) do lockedChips[id] = nil end
+	for id in pairs(lockedWeapons) do lockedChips[id] = true end
+
 	for id, chip in pairs(weaponChips) do
 		if weapons[id] then
+			chip.Frame.BackgroundColor3 = Color3.fromRGB(35, 35, 42)
+			chip.Frame.BackgroundTransparency = 0.2
+			chip.NameLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
+			chip.KeyLabel.TextColor3 = Color3.fromRGB(255, 220, 80)
 			chip.Status.Text = "Owned"
 			chip.Status.TextColor3 = Color3.fromRGB(120, 220, 120)
 		elseif lockedWeapons[id] then
+			-- Visibly disabled: dim everything so the player reads the chip
+			-- as "this slot is dead". The hotkey + RequestSwitch path also
+			-- blocks switching, but the UI has to look the part too.
+			chip.Frame.BackgroundColor3 = Color3.fromRGB(25, 18, 20)
+			chip.Frame.BackgroundTransparency = 0.55
+			chip.NameLabel.TextColor3 = Color3.fromRGB(120, 100, 100)
+			chip.KeyLabel.TextColor3 = Color3.fromRGB(120, 80, 80)
 			chip.Status.Text = "Locked"
-			chip.Status.TextColor3 = Color3.fromRGB(180, 90, 90)
+			chip.Status.TextColor3 = Color3.fromRGB(200, 90, 90)
 		else
+			chip.Frame.BackgroundColor3 = Color3.fromRGB(35, 35, 42)
+			chip.Frame.BackgroundTransparency = 0.4
+			chip.NameLabel.TextColor3 = Color3.fromRGB(170, 170, 170)
+			chip.KeyLabel.TextColor3 = Color3.fromRGB(180, 160, 80)
 			chip.Status.Text = "$" .. Config.Weapons[id].Price
 			chip.Status.TextColor3 = Color3.fromRGB(255, 200, 80)
 		end
