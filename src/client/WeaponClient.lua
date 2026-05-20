@@ -362,7 +362,13 @@ end)
 
 function WeaponClient.RequestSwitch(id)
 	local ownedWeapons = WeaponClient._ownedWeapons or {}
-	if not ownedWeapons[id] then return end
+	local lockedWeapons = WeaponClient._lockedWeapons or {}
+	-- Reject any switch attempt to a weapon the player no longer owns OR
+	-- to a weapon that has been replaced by a newer purchase. Belt-and-
+	-- braces: ownedWeapons should already exclude locked guns, but we
+	-- check both so a stale ownedWeapons table can't let a player switch
+	-- to a replaced gun.
+	if lockedWeapons[id] or not ownedWeapons[id] then return end
 	-- Pressing the same weapon's hotkey while it's already in your hand
 	-- holsters it (Minecraft-style toggle). This is the user-facing way
 	-- to "put the weapon away" without remembering the X/0 key.
@@ -375,8 +381,9 @@ function WeaponClient.RequestSwitch(id)
 	Remotes.SwitchWeapon():FireServer(id)
 end
 
-function WeaponClient.SetOwned(weapons, currentId)
+function WeaponClient.SetOwned(weapons, currentId, lockedWeapons)
 	WeaponClient._ownedWeapons = weapons
+	WeaponClient._lockedWeapons = lockedWeapons or {}
 	-- If the player's currently-equipped weapon got locked out by the server
 	-- (e.g. they bought a higher-tier weapon), fall through and equip the
 	-- new current one. Otherwise respect a deliberate "weapon holstered"

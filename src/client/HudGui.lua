@@ -174,11 +174,15 @@ local function setActiveChip(id)
 	end
 end
 
-local function setOwned(weapons)
+local function setOwned(weapons, lockedWeapons)
+	lockedWeapons = lockedWeapons or {}
 	for id, chip in pairs(weaponChips) do
 		if weapons[id] then
 			chip.Status.Text = "Owned"
 			chip.Status.TextColor3 = Color3.fromRGB(120, 220, 120)
+		elseif lockedWeapons[id] then
+			chip.Status.Text = "Locked"
+			chip.Status.TextColor3 = Color3.fromRGB(180, 90, 90)
 		else
 			chip.Status.Text = "$" .. Config.Weapons[id].Price
 			chip.Status.TextColor3 = Color3.fromRGB(255, 200, 80)
@@ -331,7 +335,7 @@ end)
 -- Wire up RemoteEvents.
 Remotes.UpdatePlayerState().OnClientEvent:Connect(function(state)
 	setMoney(state.Money)
-	setOwned(state.Weapons)
+	setOwned(state.Weapons, state.LockedWeapons)
 	setActiveChip(state.CurrentWeapon)
 	HudGui._lastState = state
 end)
