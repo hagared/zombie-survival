@@ -202,12 +202,17 @@ local toast = styled({
 	BorderSizePixel = 0,
 	AnchorPoint = Vector2.new(0.5, 0),
 	Position = UDim2.new(0.5, 0, 0, 70),
-	Size = UDim2.new(0, 580, 0, 72),
+	Size = UDim2.new(0, 600, 0, 60),
 	Text = "",
+	-- Match the $-counter in the top bar exactly: same GothamBlack at the
+	-- same TextSize 32, same default yellow. The user said the text was
+	-- "too thick" -- TextSize 40 was scaling GothamBlack into a heavy
+	-- blob. At 32, GothamBlack reads as a clean sharp display weight,
+	-- the way the $80 label does.
 	Font = Enum.Font.GothamBlack,
-	TextSize = 40,
+	TextSize = 32,
 	TextColor3 = Color3.fromRGB(255, 220, 90),
-	TextStrokeTransparency = 1, -- no chunky outline, keeps letters crisp
+	TextStrokeTransparency = 1, -- no outline, keeps letters crisp
 	Visible = false,
 	Parent = screen,
 })
