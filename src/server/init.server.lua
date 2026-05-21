@@ -118,5 +118,19 @@ Players.PlayerAdded:Connect(function(player)
 		end)
 	end)
 end)
+-- Players who were already connected when this script started running
+-- (common in Studio when you press Play with multiple players already in
+-- the session): wire up the same CharacterAdded -> Push handler and
+-- push the current state right now so their HUD/shop populate.
+for _, p in ipairs(Players:GetPlayers()) do
+	p.CharacterAdded:Connect(function(character)
+		task.defer(function()
+			PlayerData.Push(p)
+		end)
+	end)
+	if p.Character then
+		task.defer(function() PlayerData.Push(p) end)
+	end
+end
 
 WaveManager.Start()

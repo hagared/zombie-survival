@@ -31,18 +31,18 @@ function ShopServer.Setup()
 				return
 			end
 			state.Money -= def.Price
-			-- Lock every previously-purchased non-Pistol weapon so the player
-			-- can only ever wield the latest gun they bought (plus the free
-			-- Pistol fallback). Pistol is intentionally never locked since it
-			-- is the always-available starter weapon.
+			-- Lock EVERY previously-purchased weapon (including the Pistol
+			-- starter) so the player can only ever wield the latest gun
+			-- they bought. Once you buy a Shotgun you cannot fall back to
+			-- the Pistol -- that's the rule the user wants.
 			state.LockedWeapons = state.LockedWeapons or {}
 			for ownedId in pairs(state.Weapons) do
-				if ownedId ~= "Pistol" and ownedId ~= id then
+				if ownedId ~= id then
 					state.LockedWeapons[ownedId] = true
 				end
 			end
-			-- Rebuild the owned set: only the new weapon plus the Pistol.
-			state.Weapons = { Pistol = true, [id] = true }
+			-- Rebuild the owned set: ONLY the new weapon. No fallback.
+			state.Weapons = { [id] = true }
 			state.CurrentWeapon = id
 			PlayerData.Push(player)
 			Remotes.Announce():FireClient(player, "Purchased " .. def.Name, Color3.fromRGB(120, 220, 120))

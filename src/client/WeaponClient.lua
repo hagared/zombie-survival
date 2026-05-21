@@ -398,8 +398,14 @@ function WeaponClient.SetOwned(weapons, currentId, lockedWeapons)
 	end
 	if currentId and weapons[currentId] then
 		equip(currentId)
-	elseif weapons.Pistol then
-		equip("Pistol")
+	else
+		-- Fall back to ANY owned weapon. We can't hard-code "Pistol" as the
+		-- fallback anymore: once the player buys a different gun, Pistol
+		-- gets locked too, and the only owned weapon is the new one.
+		for ownedId in pairs(weapons) do
+			equip(ownedId)
+			break
+		end
 	end
 end
 
@@ -418,7 +424,14 @@ localPlayer.CharacterAdded:Connect(function()
 	local id = currentWeaponId
 	local owned = WeaponClient._ownedWeapons or {}
 	if not id or not Config.Weapons[id] or not owned[id] then
-		id = owned.Pistol and "Pistol" or nil
+		-- Pick the first weapon the player currently owns. We can't
+		-- hard-code Pistol here -- once a higher-tier weapon is bought,
+		-- Pistol moves to LockedWeapons and is no longer in `owned`.
+		id = nil
+		for ownedId in pairs(owned) do
+			id = ownedId
+			break
+		end
 	end
 	if id then equip(id) end
 end)
