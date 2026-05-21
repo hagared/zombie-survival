@@ -1,0 +1,48 @@
+{
+  "name": "ZombieSurvivalLobby",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "Shared": {
+        "$path": "lobby/src/shared"
+      }
+    },
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "Server": {
+        "$path": "lobby/src/server"
+      }
+    },
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "Client": {
+          "$path": "lobby/src/client"
+        }
+      }
+    },
+    "Workspace": {
+      "$className": "Workspace",
+      "$properties": {
+        "FilteringEnabled": true,
+        "Gravity": 196.2
+      }
+    },
+    "Lighting": {
+      "$className": "Lighting",
+      "$properties": {
+        "Ambient": [60, 50, 50],
+        "OutdoorAmbient": [110, 95, 90],
+        "Brightness": 1.5,
+        "ClockTime": 17.5,
+        "FogColor": [120, 90, 80],
+        "FogStart": 200,
+        "FogEnd": 800,
+        "ColorShift_Top": [80, 50, 40],
+        "ColorShift_Bottom": [40, 30, 30]
+      }
+    }
+  }
+}

@@ -395,6 +395,24 @@ Remotes.Announce().OnClientEvent:Connect(function(text, color)
 	showToast(text, color)
 end)
 
+-- WeaponClient fires this when the player tries to hotkey-switch to a
+-- weapon they no longer own (locked or never bought). Show a quick toast
+-- so they understand why the switch didn't happen instead of pressing
+-- the hotkey ten more times wondering if it's bugged.
+local ok, WeaponClient = pcall(function()
+	return require(script.Parent:WaitForChild("WeaponClient"))
+end)
+if ok and WeaponClient and WeaponClient.LockedAttempt then
+	WeaponClient.LockedAttempt.Event:Connect(function(weaponId, reason)
+		local cfg = Config.Weapons[weaponId]
+		local name = cfg and cfg.Name or weaponId
+		local msg = (reason == "locked")
+			and (name .. " is locked -- replaced by a newer weapon")
+			or  (name .. " is not owned")
+		showToast(msg, Color3.fromRGB(220, 110, 110))
+	end)
+end
+
 function HudGui.GetLastState() return HudGui._lastState end
 function HudGui.SetActiveChip(id) setActiveChip(id) end
 

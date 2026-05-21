@@ -313,6 +313,24 @@ RunService:BindToRenderStep(RENDER_BIND_NAME, Enum.RenderPriority.Last.Value + 1
 	if rec > 0 then
 		camera.CFrame = camera.CFrame * CFrame.Angles(rec * 0.2 * dt * 10, 0, 0)
 	end
+
+	-- Watchdog: if for ANY reason we end up holding a weapon the player
+	-- doesn't currently own (server replied with new lock state, race
+	-- between purchase Push and a hotkey press, exploit, anything), tear
+	-- the model down NOW and equip the actual current weapon. This is the
+	-- belt-and-braces guarantee the user asked for: a locked weapon can
+	-- never physically remain in the player's hand.
+	if currentWeaponId and currentModel then
+		local owned = WeaponClient._ownedWeapons
+		if owned and not owned[currentWeaponId] then
+			detachCurrent()
+			currentWeaponId = nil
+			for ownedId in pairs(owned) do
+				equip(ownedId)
+				break
+			end
+		end
+	end
 end)
 
 UserInputService.InputBegan:Connect(function(input, processed)
@@ -360,6 +378,11 @@ Remotes.HitFeedback().OnClientEvent:Connect(function(shooter, weaponId, origin, 
 	end
 end)
 
+-- Local-only event the HUD can subscribe to so it can flash a "locked"
+-- message when the player tries to switch to a weapon they no longer own.
+-- This avoids a circular require between WeaponClient <-> HudGui.
+WeaponClient.LockedAttempt = Instance.new("BindableEvent")
+
 function WeaponClient.RequestSwitch(id)
 	local ownedWeapons = WeaponClient._ownedWeapons or {}
 	local lockedWeapons = WeaponClient._lockedWeapons or {}
@@ -368,7 +391,14 @@ function WeaponClient.RequestSwitch(id)
 	-- braces: ownedWeapons should already exclude locked guns, but we
 	-- check both so a stale ownedWeapons table can't let a player switch
 	-- to a replaced gun.
-	if lockedWeapons[id] or not ownedWeapons[id] then return end
+	if lockedWeapons[id] then
+		WeaponClient.LockedAttempt:Fire(id, "locked")
+		return
+	end
+	if not ownedWeapons[id] then
+		WeaponClient.LockedAttempt:Fire(id, "not_owned")
+		return
+	end
 	-- Pressing the same weapon's hotkey while it's already in your hand
 	-- holsters it (Minecraft-style toggle). This is the user-facing way
 	-- to "put the weapon away" without remembering the X/0 key.
