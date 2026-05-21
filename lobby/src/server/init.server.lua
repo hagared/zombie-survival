@@ -16,8 +16,12 @@ local MapGenerator = require(script.MapGenerator)
 local Helicopter = require(script.Helicopter)
 local RoomManager = require(script.RoomManager)
 
--- Build the world.
-MapGenerator.Build()
+-- Build the world ONLY if there's no `LobbyMap` folder already saved.
+-- That way you can bake the map via the Command Bar (see scripts/build-
+-- lobby-map.lua) and then hand-edit it; the server won't re-generate.
+if not Workspace:FindFirstChild("LobbyMap") then
+	MapGenerator.Build()
+end
 
 -- SpawnLocations on the helipad so players spawn there on join / respawn.
 local spawnFolder = Instance.new("Folder")

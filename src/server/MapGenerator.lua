@@ -540,4 +540,28 @@ function MapGenerator.GetZombieSpawnPoints()
 	return ZOMBIE_SPAWN_POINTS
 end
 
+-- When the map has been baked into the place file (you ran the Command Bar
+-- bake script and then hand-edited the geometry), we still need to know
+-- where the player + zombie spawn pads are. Walk the existing map folder
+-- and pull positions from the named markers we put down at build time:
+--   * "SpawnPad_*"     -- player respawn pads on the plaza
+--   * "ZombieSpawn_*"  -- zombie spawn marker pads
+function MapGenerator.IndexExisting(mapFolder)
+	SPAWN_POINTS = {}
+	ZOMBIE_SPAWN_POINTS = {}
+	for _, child in ipairs(mapFolder:GetDescendants()) do
+		if child:IsA("BasePart") then
+			if child.Name:sub(1, 9) == "SpawnPad_" then
+				-- Lift Y up by 4 to match the original (player capsule is
+				-- 5 studs tall, we spawn it above the pad).
+				table.insert(SPAWN_POINTS, child.Position + Vector3.new(0, 4, 0))
+			elseif child.Name:sub(1, 12) == "ZombieSpawn_" then
+				-- Lift Y up by ~5 so the zombie has clearance off the marker.
+				table.insert(ZOMBIE_SPAWN_POINTS, child.Position + Vector3.new(0, 4.6, 0))
+			end
+		end
+	end
+	return mapFolder
+end
+
 return MapGenerator

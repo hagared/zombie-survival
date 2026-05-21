@@ -77,8 +77,18 @@ local ShopServer = require(script.ShopServer)
 local DefenseManager = require(script.DefenseManager)
 local PlayerData = require(script.PlayerData)
 
--- Build the world.
-MapGenerator.Build()
+-- Build the world ONLY if no `Map` folder is already saved in Workspace.
+-- This lets you bake the procedural map into the place via the Command Bar
+-- (see scripts/build-map.lua) and then hand-edit it without the server
+-- regenerating from scratch on every Play.
+if not workspace:FindFirstChild("Map") then
+	MapGenerator.Build()
+else
+	-- Map is already in the place file -- still need to seed the spawn-point
+	-- caches so other systems (WaveManager, init.server.lua spawn pads) can
+	-- ask for the player + zombie spawn lists.
+	MapGenerator.IndexExisting(workspace.Map)
+end
 
 -- Place player spawns so respawning works in the plaza.
 local function ensureSpawnLocations()
