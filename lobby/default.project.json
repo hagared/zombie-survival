@@ -33,15 +33,19 @@
     "Lighting": {
       "$className": "Lighting",
       "$properties": {
-        "Ambient": [60, 60, 65],
-        "OutdoorAmbient": [70, 70, 75],
-        "Brightness": 1.8,
-        "ClockTime": 14,
-        "FogColor": [140, 135, 140],
-        "FogStart": 200,
-        "FogEnd": 900,
-        "GlobalShadows": true,
-        "GeographicLatitude": 41.7
+        "Ambient": [0.15, 0.15, 0.2],
+        "OutdoorAmbient": [0.4, 0.4, 0.45],
+        "Brightness": 1.5,
+        "ClockTime": 2.5,
+        "FogColor": [0.1, 0.1, 0.15],
+        "FogStart": 50,
+        "FogEnd": 400
+      }
+    },
+    "SoundService": {
+      "$className": "SoundService",
+      "$properties": {
+        "RespectFilteringEnabled": true
       }
     }
   }
