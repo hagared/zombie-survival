@@ -106,6 +106,9 @@ function ZombieAI.Register(model, humanoid, onKilled)
 		WaypointIndex = 1,
 		NextPathAt = 0,     -- os.clock() when we should recompute next
 		PathInFlight = false,
+		-- Stuck-detection state:
+		LastPos = rootPart.Position,
+		StuckTime = 0,
 	}
 	activeZombies[model] = data
 
@@ -114,7 +117,9 @@ function ZombieAI.Register(model, humanoid, onKilled)
 		if onKilled then
 			onKilled(model)
 		end
-		Debris:AddItem(model, 4)
+		-- Model cleanup is handled by ZombieFactory.Animate (sink-into-ground
+		-- sequence). Don't Debris:AddItem here or the body may vanish before
+		-- the sink animation finishes.
 	end)
 end
 
@@ -147,6 +152,52 @@ function ZombieAI.Start()
 			if not model.Parent or data.Humanoid.Health <= 0 then
 				activeZombies[model] = nil
 				continue
+			end
+
+			-- Safety: kill anything that fell out of the world or wandered
+			-- past the arena edge. Without this the wave counter can hang
+			-- forever on a zombie that's stuck in the void / outside the
+			-- mountain ring (which the no-jump pathfinder can't escape from).
+			local pos = data.RootPart.Position
+			if pos.Y < -20 or math.abs(pos.X) > 260 or math.abs(pos.Z) > 260 then
+				data.Humanoid.Health = 0
+				activeZombies[model] = nil
+				continue
+			end
+
+			-- Stuck detection: if we've barely moved AND we're not actively
+			-- engaging a target (melee distance, or sitting in spit range
+			-- as a Spitter), count up; after a few seconds, give up and
+			-- kill the zombie so the wave can complete. This catches
+			-- zombies that pathed onto a rooftop, into a wall, or got
+			-- pinched between two buildings.
+			--
+			-- 0.05 studs/heartbeat = ~3 studs/sec. The slowest normal
+			-- zombie (Brute) walks at 7 studs/sec ~= 0.12 per heartbeat,
+			-- so any genuinely-walking zombie clears this threshold every
+			-- frame and StuckTime resets. Only a physically blocked
+			-- zombie (or one whose pathfinder gave up) keeps accumulating.
+			local moved = (pos - data.LastPos).Magnitude
+			data.LastPos = pos
+			local engaging = false
+			if data.Target then
+				local th = data.Target:FindFirstChild("HumanoidRootPart")
+				if th then
+					local td = (th.Position - pos).Magnitude
+					local ranged = model:GetAttribute("Ranged")
+					local rangedRange = model:GetAttribute("RangedRange") or 0
+					engaging = (td < 6) or (ranged and td < rangedRange and td > 15)
+				end
+			end
+			if not engaging and moved < 0.05 then
+				data.StuckTime += dt
+				if data.StuckTime > 10 then
+					data.Humanoid.Health = 0
+					activeZombies[model] = nil
+					continue
+				end
+			else
+				data.StuckTime = 0
 			end
 
 			-- DOT (barbed wire etc.)
@@ -193,6 +244,8 @@ function ZombieAI.Start()
 						data.Waypoints = nil
 						if now - data.LastAttack > model:GetAttribute("AttackCooldown") then
 							data.LastAttack = now
+							-- Tell the procedural animator to play a spit-attack pose for ~0.4s.
+							model:SetAttribute("AttackingUntil", now + 0.4)
 							spawnSpit(data.RootPart, data.Target, model:GetAttribute("Damage"))
 						end
 					else
@@ -250,6 +303,11 @@ function ZombieAI.Start()
 						-- Melee attack on contact.
 						if dist < 4.5 and now - data.LastAttack > model:GetAttribute("AttackCooldown") then
 							data.LastAttack = now
+							-- Tell the procedural animator to play a melee
+							-- swing pose for ~0.35s. The Animate Heartbeat
+							-- in ZombieFactory reads this attribute to bend
+							-- the zombie forward and slam its arms down.
+							model:SetAttribute("AttackingUntil", now + 0.35)
 							local targetHum = data.Target:FindFirstChildOfClass("Humanoid")
 							if targetHum and targetHum.Health > 0 then
 								targetHum:TakeDamage(model:GetAttribute("Damage"))

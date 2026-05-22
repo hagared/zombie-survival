@@ -165,21 +165,65 @@ for id, cfg in pairs(Config.Weapons) do
 	buildWeaponChip(id, cfg)
 end
 
+-- Track which chips are currently in the "Locked" visual state so the
+-- active-chip highlight (gold border) skips them on respawn / state push.
+local lockedChips = {}
+
 local function setActiveChip(id)
 	for chipId, chip in pairs(weaponChips) do
-		local goal = chipId == id
-			and { Color = Color3.fromRGB(255, 220, 80), Thickness = 3, Transparency = 0 }
-			or { Color = Color3.fromRGB(80, 80, 100), Thickness = 2, Transparency = 0.2 }
-		TweenService:Create(chip.Outline, TweenInfo.new(0.2), goal):Play()
+		-- Locked chips never get the gold "active" border -- they get a dim
+		-- red one to keep the "you can't use this anymore" reading.
+		if lockedChips[chipId] then
+			TweenService:Create(chip.Outline, TweenInfo.new(0.2), {
+				Color = Color3.fromRGB(120, 50, 50),
+				Thickness = 2,
+				Transparency = 0.4,
+			}):Play()
+		else
+			local goal = chipId == id
+				and { Color = Color3.fromRGB(255, 220, 80), Thickness = 3, Transparency = 0 }
+				or { Color = Color3.fromRGB(80, 80, 100), Thickness = 2, Transparency = 0.2 }
+			TweenService:Create(chip.Outline, TweenInfo.new(0.2), goal):Play()
+		end
 	end
 end
 
-local function setOwned(weapons)
+-- Visual states for the bottom-bar weapon chips:
+--   * Owned:   bright bg, bright name, green "Owned" status
+--   * Locked:  dim translucent bg, grey name + key, red "Locked" status,
+--              red outline (set by setActiveChip). Player can clearly see
+--              the gun is gone -- not buyable, not equippable.
+--   * For sale: dim bg, grey name, yellow "$price" status.
+local function setOwned(weapons, lockedWeapons)
+	lockedWeapons = lockedWeapons or {}
+	-- Refresh which chips are in the locked state -- setActiveChip uses
+	-- this to decide whether to draw the gold or red outline.
+	for id in pairs(lockedChips) do lockedChips[id] = nil end
+	for id in pairs(lockedWeapons) do lockedChips[id] = true end
+
 	for id, chip in pairs(weaponChips) do
 		if weapons[id] then
+			chip.Frame.BackgroundColor3 = Color3.fromRGB(35, 35, 42)
+			chip.Frame.BackgroundTransparency = 0.2
+			chip.NameLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
+			chip.KeyLabel.TextColor3 = Color3.fromRGB(255, 220, 80)
 			chip.Status.Text = "Owned"
 			chip.Status.TextColor3 = Color3.fromRGB(120, 220, 120)
+		elseif lockedWeapons[id] then
+			-- Visibly disabled: dim everything so the player reads the chip
+			-- as "this slot is dead". The hotkey + RequestSwitch path also
+			-- blocks switching, but the UI has to look the part too.
+			chip.Frame.BackgroundColor3 = Color3.fromRGB(25, 18, 20)
+			chip.Frame.BackgroundTransparency = 0.55
+			chip.NameLabel.TextColor3 = Color3.fromRGB(120, 100, 100)
+			chip.KeyLabel.TextColor3 = Color3.fromRGB(120, 80, 80)
+			chip.Status.Text = "Locked"
+			chip.Status.TextColor3 = Color3.fromRGB(200, 90, 90)
 		else
+			chip.Frame.BackgroundColor3 = Color3.fromRGB(35, 35, 42)
+			chip.Frame.BackgroundTransparency = 0.4
+			chip.NameLabel.TextColor3 = Color3.fromRGB(170, 170, 170)
+			chip.KeyLabel.TextColor3 = Color3.fromRGB(180, 160, 80)
 			chip.Status.Text = "$" .. Config.Weapons[id].Price
 			chip.Status.TextColor3 = Color3.fromRGB(255, 200, 80)
 		end
@@ -187,38 +231,49 @@ local function setOwned(weapons)
 end
 
 -- ===== Announcement toast =====
+-- Same understated look as the "Next wave in Ns" intermission timer:
+-- GothamSemibold (medium weight, not GothamBlack -- the user found
+-- GothamBlack reads as too thick / heavy) and a soft off-white default
+-- colour, so the toast feels informational rather than shouting at the
+-- player. The dark near-opaque toast background gives enough contrast
+-- that no text outline is needed.
+-- Caller-supplied colour (red for "wave incoming", green for "wave
+-- cleared") still wins over the default when something dramatic
+-- happens.
 local toast = styled({
 	Class = "TextLabel",
-	BackgroundColor3 = Color3.fromRGB(20, 20, 25),
-	BackgroundTransparency = 0.2,
+	BackgroundColor3 = Color3.fromRGB(15, 15, 18),
+	BackgroundTransparency = 0.1,
 	BorderSizePixel = 0,
 	AnchorPoint = Vector2.new(0.5, 0),
 	Position = UDim2.new(0.5, 0, 0, 70),
-	Size = UDim2.new(0, 480, 0, 50),
+	Size = UDim2.new(0, 600, 0, 56),
 	Text = "",
-	Font = Enum.Font.GothamBlack,
+	Font = Enum.Font.GothamSemibold,
 	TextSize = 24,
-	TextColor3 = Color3.fromRGB(255, 220, 90),
+	TextColor3 = Color3.fromRGB(220, 230, 240),
+	TextStrokeTransparency = 1, -- no outline, keeps letters crisp
 	Visible = false,
 	Parent = screen,
 })
 local tcorner = Instance.new("UICorner", toast)
-tcorner.CornerRadius = UDim.new(0, 12)
+tcorner.CornerRadius = UDim.new(0, 14)
 local tstroke = Instance.new("UIStroke", toast)
-tstroke.Color = Color3.fromRGB(255, 220, 80)
-tstroke.Thickness = 2
+tstroke.Color = Color3.fromRGB(120, 130, 145)
+tstroke.Thickness = 1
+tstroke.Transparency = 0.4
 
 local function showToast(text, color)
 	toast.Text = text
-	toast.TextColor3 = color or Color3.fromRGB(255, 220, 90)
-	tstroke.Color = color or Color3.fromRGB(255, 220, 80)
+	toast.TextColor3 = color or Color3.fromRGB(220, 230, 240)
+	tstroke.Color = color or Color3.fromRGB(120, 130, 145)
 	toast.Position = UDim2.new(0.5, 0, 0, 40)
 	toast.BackgroundTransparency = 1
 	toast.TextTransparency = 1
 	toast.Visible = true
 	TweenService:Create(toast, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 		Position = UDim2.new(0.5, 0, 0, 80),
-		BackgroundTransparency = 0.2,
+		BackgroundTransparency = 0.1,
 		TextTransparency = 0,
 	}):Play()
 	task.delay(2.5, function()
@@ -320,7 +375,7 @@ end)
 -- Wire up RemoteEvents.
 Remotes.UpdatePlayerState().OnClientEvent:Connect(function(state)
 	setMoney(state.Money)
-	setOwned(state.Weapons)
+	setOwned(state.Weapons, state.LockedWeapons)
 	setActiveChip(state.CurrentWeapon)
 	HudGui._lastState = state
 end)
@@ -339,6 +394,24 @@ end)
 Remotes.Announce().OnClientEvent:Connect(function(text, color)
 	showToast(text, color)
 end)
+
+-- WeaponClient fires this when the player tries to hotkey-switch to a
+-- weapon they no longer own (locked or never bought). Show a quick toast
+-- so they understand why the switch didn't happen instead of pressing
+-- the hotkey ten more times wondering if it's bugged.
+local ok, WeaponClient = pcall(function()
+	return require(script.Parent:WaitForChild("WeaponClient"))
+end)
+if ok and WeaponClient and WeaponClient.LockedAttempt then
+	WeaponClient.LockedAttempt.Event:Connect(function(weaponId, reason)
+		local cfg = Config.Weapons[weaponId]
+		local name = cfg and cfg.Name or weaponId
+		local msg = (reason == "locked")
+			and (name .. " is locked -- replaced by a newer weapon")
+			or  (name .. " is not owned")
+		showToast(msg, Color3.fromRGB(220, 110, 110))
+	end)
+end
 
 function HudGui.GetLastState() return HudGui._lastState end
 function HudGui.SetActiveChip(id) setActiveChip(id) end

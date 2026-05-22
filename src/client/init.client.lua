@@ -21,7 +21,7 @@ local camera = Workspace.CurrentCamera
 
 -- Listen for player state pushes so the weapon system knows what's owned.
 Remotes.UpdatePlayerState().OnClientEvent:Connect(function(state)
-	WeaponClient.SetOwned(state.Weapons, state.CurrentWeapon)
+	WeaponClient.SetOwned(state.Weapons, state.CurrentWeapon, state.LockedWeapons)
 end)
 
 -- ===== Defense placement mode =====

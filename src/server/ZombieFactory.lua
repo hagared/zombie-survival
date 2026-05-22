@@ -162,36 +162,176 @@ end
 
 -- Drive a procedural shambling-zombie animation on the R6 motors. Runs on
 -- Heartbeat and cleans itself up when the humanoid dies / model is gone.
+--
+-- Layers:
+--   * IDLE    -- subtle breathing sway, head loll
+--   * WALK    -- legs swing, torso tilts side to side, arms reach forward
+--             with a counter-sway, and the body bobs vertically a touch
+--   * ATTACK  -- short pose triggered by ZombieAI when the zombie strikes:
+--             whole upper body lurches forward and arms slam down (melee)
+--             or both arms thrust toward the target (spit). Driven by the
+--             "AttackingUntil" attribute on the model: ZombieAI sets it to
+--             os.clock() + duration, the animator interpolates a punch /
+--             thrust until that time.
+--   * DEATH   -- snapping joints + impulse on the Torso so corpses tip
+--             over in a believable direction instead of standing rigid.
 function ZombieFactory.Animate(model, motors)
 	local phase = math.random() * math.pi * 2
+	local bob = math.random() * math.pi * 2
 	local conn
+	local diedHandled = false
+	local humanoid = model:FindFirstChildOfClass("Humanoid")
+
+	-- Ragdoll on death: keep the rig assembled (don't break Motor6Ds) and
+	-- hand the body to the physics engine so it falls as one rigid piece.
+	-- After a short settle time, darken to black and sink into the ground.
+	local function ragdoll()
+		if diedHandled then return end
+		diedHandled = true
+		-- Stop the procedural animator.
+		if conn then conn:Disconnect() end
+
+		if humanoid then
+			humanoid.PlatformStand = true
+			humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+			humanoid.WalkSpeed = 0
+			humanoid.JumpPower = 0
+		end
+
+		-- Make every part collide so the corpse lands on the ground.
+		for _, part in ipairs(model:GetChildren()) do
+			if part:IsA("BasePart") then
+				part.CanCollide = true
+				part.Massless = false
+			end
+		end
+
+		local torso = model:FindFirstChild("Torso")
+		if torso then
+			-- Toss the body forward so it visibly falls in a direction.
+			local fwd = torso.CFrame.LookVector
+			torso.AssemblyLinearVelocity = Vector3.new(fwd.X, 0.4, fwd.Z) * 12
+			torso.AssemblyAngularVelocity = Vector3.new(
+				(math.random() - 0.5) * 5,
+				(math.random() - 0.5) * 5,
+				(math.random() - 0.5) * 5
+			)
+		end
+
+		-- After 1.5s let the corpse settle, then darken + sink into ground.
+		task.delay(1.5, function()
+			if not model.Parent then return end
+
+			-- Phase 1: darken all parts to near-black over 0.6s.
+			local TweenService = game:GetService("TweenService")
+			local sinkParts = {}
+			for _, part in ipairs(model:GetChildren()) do
+				if part:IsA("BasePart") then
+					table.insert(sinkParts, part)
+					TweenService:Create(part, TweenInfo.new(0.6), {
+						Color = Color3.fromRGB(15, 15, 18),
+					}):Play()
+				end
+			end
+
+			-- Phase 2: after darkening, sink downward + fade out over 1.2s.
+			task.delay(0.6, function()
+				if not model.Parent then return end
+				-- Anchor everything so physics doesn't fight the sink tween,
+				-- and disable collision so limbs don't catch on the ground.
+				for _, part in ipairs(sinkParts) do
+					if part.Parent then
+						part.Anchored = true
+						part.CanCollide = false
+					end
+				end
+				-- Tween every part downward by 5 studs + fade to transparent.
+				for _, part in ipairs(sinkParts) do
+					if part.Parent then
+						local goal = {
+							Position = part.Position - Vector3.new(0, 5, 0),
+							Transparency = 1,
+						}
+						TweenService:Create(part, TweenInfo.new(1.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In), goal):Play()
+					end
+				end
+				-- Destroy the model after the sink is complete.
+				task.delay(1.3, function()
+					if model.Parent then
+						model:Destroy()
+					end
+				end)
+			end)
+		end)
+	end
+
+	if humanoid then
+		humanoid.Died:Connect(ragdoll)
+	end
+
 	conn = RunService.Heartbeat:Connect(function(dt)
 		if not model.Parent then
 			conn:Disconnect()
 			return
 		end
-		local humanoid = model:FindFirstChildOfClass("Humanoid")
 		if not humanoid or humanoid.Health <= 0 then
+			ragdoll()
 			conn:Disconnect()
 			return
 		end
 
 		phase += dt * 6
+		bob += dt * 12
 		local moving = humanoid.MoveDirection.Magnitude > 0.1
-		local amp = moving and 1 or 0.15
+		local amp = moving and 1 or 0.18
 		local s = math.sin(phase) * amp
 		local c = math.cos(phase) * amp
 
-		-- Legs swing forward/back around the hip (X axis in local space).
-		motors.LeftHip.motor.C0 = motors.LeftHip.c0 * CFrame.Angles(s * 0.7, 0, 0)
-		motors.RightHip.motor.C0 = motors.RightHip.c0 * CFrame.Angles(-s * 0.7, 0, 0)
-		-- Classic zombie arms-outstretched-forward pose with a subtle sway.
-		-- Positive X rotation = arms reach forward (the shoulder's local frame
-		-- is flipped via the RootJoint 180° Y rotation, so "+X" forward here).
-		motors.LeftShoulder.motor.C0 = motors.LeftShoulder.c0 * CFrame.Angles(1.3 + c * 0.15, 0, 0)
-		motors.RightShoulder.motor.C0 = motors.RightShoulder.c0 * CFrame.Angles(1.3 - c * 0.15, 0, 0)
-		-- Head lolls slowly.
-		motors.Neck.motor.C0 = motors.Neck.c0 * CFrame.Angles(math.sin(phase * 0.5) * 0.2, 0, math.sin(phase * 0.3) * 0.15)
+		-- Active attack window? Mix in a punch / thrust pose. Strength
+		-- ramps in over the first ~half then ramps out, so it reads as
+		-- a single deliberate swing rather than a sudden snap.
+		local attackingUntil = model:GetAttribute("AttackingUntil") or 0
+		local now = os.clock()
+		local atk = 0
+		if attackingUntil > now then
+			local windowSize = 0.4
+			local timeLeft = attackingUntil - now
+			-- Bell-curve: 0 at edges, 1 in the middle of the window.
+			atk = math.clamp(1 - math.abs((windowSize - timeLeft) / (windowSize * 0.5) - 1), 0, 1)
+		end
+
+		-- LEGS: slow shamble swing forward/back. Almost no swing while
+		-- standing still (just a tiny breathing wobble).
+		motors.LeftHip.motor.C0 = motors.LeftHip.c0 * CFrame.Angles(s * 0.8, 0, 0)
+		motors.RightHip.motor.C0 = motors.RightHip.c0 * CFrame.Angles(-s * 0.8, 0, 0)
+
+		-- TORSO: side-to-side stagger plus a vertical bob while walking.
+		-- The bob is achieved by tweaking the Root joint Y offset --
+		-- visually it looks like the zombie is dragging itself forward.
+		local torsoTilt = moving and (math.sin(phase) * 0.12) or 0
+		local torsoBob = moving and (math.sin(bob) * 0.08) or 0
+		motors.Root.motor.C0 = motors.Root.c0
+			* CFrame.new(0, torsoBob, 0)
+			* CFrame.Angles(atk * 0.6, 0, torsoTilt)
+
+		-- ARMS: classic outstretched-forward zombie pose with a lazy
+		-- counter-sway from the legs. During an attack swing both arms
+		-- snap upward (+atk * 0.9 makes the rotation more aggressive)
+		-- to read as a slam / lunge.
+		local armForward = 1.3
+		local armSwing = 0.18
+		motors.LeftShoulder.motor.C0 = motors.LeftShoulder.c0
+			* CFrame.Angles(armForward + c * armSwing - atk * 0.9, 0, 0)
+		motors.RightShoulder.motor.C0 = motors.RightShoulder.c0
+			* CFrame.Angles(armForward - c * armSwing - atk * 0.9, 0, 0)
+
+		-- HEAD: slow loll left/right, tilt down during attack.
+		motors.Neck.motor.C0 = motors.Neck.c0
+			* CFrame.Angles(
+				math.sin(phase * 0.5) * 0.2 + atk * 0.3,
+				0,
+				math.sin(phase * 0.3) * 0.18
+			)
 	end)
 end
 

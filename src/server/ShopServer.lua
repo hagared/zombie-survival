@@ -16,13 +16,33 @@ function ShopServer.Setup()
 		if kind == "Weapon" then
 			local def = Config.Weapons[id]
 			if not def then return end
+			-- Can't re-buy a weapon you already own.
 			if state.Weapons[id] then return end
+			-- Can't re-buy a weapon you previously replaced. The "buy new
+			-- gun -> previous one is locked" rule means once you've moved
+			-- on from a weapon, it stays locked for the rest of the run.
+			-- This stops players from cycling between weapons by re-buying.
+			if state.LockedWeapons and state.LockedWeapons[id] then
+				Remotes.Announce():FireClient(player, def.Name .. " is locked", Color3.fromRGB(255, 90, 90))
+				return
+			end
 			if state.Money < def.Price then
 				Remotes.Announce():FireClient(player, "Not enough money for " .. def.Name, Color3.fromRGB(255, 90, 90))
 				return
 			end
 			state.Money -= def.Price
-			state.Weapons[id] = true
+			-- Lock EVERY previously-purchased weapon (including the Pistol
+			-- starter) so the player can only ever wield the latest gun
+			-- they bought. Once you buy a Shotgun you cannot fall back to
+			-- the Pistol -- that's the rule the user wants.
+			state.LockedWeapons = state.LockedWeapons or {}
+			for ownedId in pairs(state.Weapons) do
+				if ownedId ~= id then
+					state.LockedWeapons[ownedId] = true
+				end
+			end
+			-- Rebuild the owned set: ONLY the new weapon. No fallback.
+			state.Weapons = { [id] = true }
 			state.CurrentWeapon = id
 			PlayerData.Push(player)
 			Remotes.Announce():FireClient(player, "Purchased " .. def.Name, Color3.fromRGB(120, 220, 120))

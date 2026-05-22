@@ -49,6 +49,15 @@ local function spawnZombie(wave, tier)
 	local spawns = MapGenerator.GetZombieSpawnPoints()
 	local spawnPos = spawns[math.random(1, #spawns)] + Vector3.new(math.random(-6, 6), 0, math.random(-6, 6))
 	model:PivotTo(CFrame.new(spawnPos))
+
+	-- IMPORTANT: increment the alive counter BEFORE we parent the model and
+	-- register Died handlers. Otherwise a zombie that dies synchronously on
+	-- the very first heartbeat after spawn (e.g. spawned on top of the
+	-- fall-kill plate, or out-of-bounds) would fire Died -> onKilled before
+	-- our `zombiesAlive += 1` runs, leaving the counter desynced from the
+	-- actual world (counter says 1, world has 0; or worse: -1 -> clamped to
+	-- 0 then we += 1 leaving a phantom that nothing can kill).
+	zombiesAlive += 1
 	model.Parent = zombiesFolder
 
 	ZombieAI.Register(model, humanoid, function()
@@ -56,7 +65,22 @@ local function spawnZombie(wave, tier)
 		pushWaveState({ Wave = currentWave, AliveCount = zombiesAlive })
 	end)
 	ZombieFactory.Animate(model, motors)
-	zombiesAlive += 1
+end
+
+-- Source-of-truth count: how many zombies in the spawn folder still have a
+-- living humanoid. Used to refuse to end the wave while real, breathing
+-- zombies are walking around the map -- even if the bookkeeping counter
+-- desynced for any reason.
+local function countLivingZombies()
+	if not zombiesFolder then return 0 end
+	local n = 0
+	for _, child in ipairs(zombiesFolder:GetChildren()) do
+		local hum = child:FindFirstChildOfClass("Humanoid")
+		if hum and hum.Health > 0 then
+			n += 1
+		end
+	end
+	return n
 end
 
 function WaveManager.Start()
@@ -80,8 +104,19 @@ function WaveManager.Start()
 				task.wait(0.35 + math.random() * 0.35)
 			end
 
-			-- Wait for everyone to be dead.
-			while zombiesAlive > 0 do
+			-- Wait for everyone to be dead. Re-poll the spawn folder rather
+			-- than trusting the bookkeeping counter, so a single missed
+			-- decrement / increment can't end the wave with a living
+			-- zombie still walking around. If the counter and the actual
+			-- world disagree, the world wins and we update the counter so
+			-- the HUD's "Zombies: N" stays honest.
+			while true do
+				local actual = countLivingZombies()
+				if actual == 0 and zombiesAlive == 0 then break end
+				if actual ~= zombiesAlive then
+					zombiesAlive = actual
+					pushWaveState({ Wave = currentWave, AliveCount = zombiesAlive })
+				end
 				task.wait(0.5)
 			end
 

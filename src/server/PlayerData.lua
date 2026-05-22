@@ -15,6 +15,7 @@ local function freshState()
 	return {
 		Money = Config.StartingMoney,
 		Weapons = { Pistol = true },
+		LockedWeapons = {}, -- weapons the player owned then replaced; can't be re-bought
 		DefensePurchases = { Turret = 0, BarbedWire = 0, Mine = 0 },
 		CurrentWeapon = "Pistol",
 	}
