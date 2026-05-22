@@ -33,13 +33,15 @@
     "Lighting": {
       "$className": "Lighting",
       "$properties": {
-        "Ambient": [80, 80, 80],
-        "OutdoorAmbient": [130, 130, 135],
-        "Brightness": 2,
+        "Ambient": [60, 60, 65],
+        "OutdoorAmbient": [70, 70, 75],
+        "Brightness": 1.8,
         "ClockTime": 14,
-        "FogColor": [160, 155, 150],
-        "FogStart": 350,
-        "FogEnd": 1400
+        "FogColor": [140, 135, 140],
+        "FogStart": 200,
+        "FogEnd": 900,
+        "GlobalShadows": true,
+        "GeographicLatitude": 41.7
       }
     }
   }
