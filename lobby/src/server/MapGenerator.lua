@@ -42,7 +42,7 @@ local function buildHelipad(parent)
 	local hThick = 1.4
 	local hWidth = 12
 	local hHeight = 18
-	local hCol = Color3.fromRGB(220, 180, 60)
+	local hCol = Color3.fromRGB(230, 220, 180)
 	for _, off in ipairs({
 		Vector3.new(-hWidth / 2, 1.05, 0),
 		Vector3.new(hWidth / 2, 1.05, 0),
@@ -96,14 +96,14 @@ local function buildHelipad(parent)
 			Size = Vector3.new(1.2, 0.6, 1.2),
 			Position = Vector3.new(cx, 9.2, cz),
 			Material = Enum.Material.Neon,
-			Color = Color3.fromRGB(255, 220, 140),
+			Color = Color3.fromRGB(220, 230, 240),
 			Transparency = 0.2,
 		})
 		lamp.Parent = parent
 		local light = Instance.new("PointLight")
-		light.Brightness = 1.5
-		light.Range = 28
-		light.Color = Color3.fromRGB(255, 220, 140)
+		light.Brightness = 1.2
+		light.Range = 22
+		light.Color = Color3.fromRGB(220, 230, 240)
 		light.Parent = lamp
 	end
 end
